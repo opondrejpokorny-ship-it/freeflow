@@ -1170,8 +1170,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         Task {
             do {
-                let transcriptionService = try makeTranscriptionService()
-                let rawTranscript = try await transcriptionService.transcribe(fileURL: audioURL)
+                let transcriptionRunner = try makeSpeechTranscriptionRunner()
+                let rawTranscript = try await transcriptionRunner.transcribe(fileURL: audioURL)
                 let parsedTranscript = Self.parseTranscriptCommands(
                     from: rawTranscript,
                     pressEnterCommandEnabled: self.isPressEnterVoiceCommandEnabled
@@ -2556,7 +2556,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     /// strict order to avoid paying for both when realtime succeeds.
     private static func resolveRawTranscript(
         realtimeService: RealtimeTranscriptionService?,
-        fileService: TranscriptionService,
+        fileRunner: SpeechTranscriptionRunner,
         fileURL: URL
     ) async throws -> String {
         if let realtimeService {
@@ -2571,10 +2571,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 throw CancellationError()
             } catch {
                 try Task.checkCancellation()
-                return try await fileService.transcribe(fileURL: fileURL)
+                return try await fileRunner.transcribe(fileURL: fileURL)
             }
         }
-        return try await fileService.transcribe(fileURL: fileURL)
+        return try await fileRunner.transcribe(fileURL: fileURL)
     }
 
     private func stopAndTranscribe() {
@@ -2661,10 +2661,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     activeRealtime?.cancel()
                 }
                 do {
-                    let transcriptionService = try self.makeTranscriptionService()
+                    let transcriptionRunner = try self.makeSpeechTranscriptionRunner()
                     async let transcript = Self.resolveRawTranscript(
-                        realtimeService: activeRealtime,
-                        fileService: transcriptionService,
+                        realtimeService: self.speechExecutionMode == .cloud ? activeRealtime : nil,
+                        fileRunner: transcriptionRunner,
                         fileURL: transcriptionFileURL
                     )
                     let rawTranscript = try await transcript
@@ -2895,6 +2895,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func startRealtimeStreamingIfEnabled() {
+        guard speechExecutionMode == .cloud else {
+            tearDownRealtimeService()
+            return
+        }
         guard realtimeStreamingEnabled else { return }
         let trimmedBase = resolvedTranscriptionBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedBase.isEmpty else {

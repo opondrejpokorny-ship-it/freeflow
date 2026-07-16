@@ -28,30 +28,50 @@ enum LocalWhisperProcessError: LocalizedError, Equatable {
     }
 }
 
+/// Runs whisper.cpp with file-backed stdout/stderr. File handles avoid the
+/// bounded-pipe deadlock that can occur when a child process writes enough logs
+/// before its parent starts draining the pipes.
 final class FoundationLocalWhisperProcessRunner: LocalWhisperProcessRunning, @unchecked Sendable {
     func run(
         executableURL: URL,
         arguments: [String],
         timeout: TimeInterval
     ) async throws -> LocalWhisperProcessResult {
-        let process = Process()
-        let standardOutput = Pipe()
-        let standardError = Pipe()
+        let fileManager = FileManager.default
+        let captureDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent("freeflow-whisper-process-\(UUID().uuidString)", isDirectory: true)
+        let outputURL = captureDirectory.appendingPathComponent("stdout.txt")
+        let errorURL = captureDirectory.appendingPathComponent("stderr.txt")
 
+        try fileManager.createDirectory(at: captureDirectory, withIntermediateDirectories: true)
+        fileManager.createFile(atPath: outputURL.path, contents: nil)
+        fileManager.createFile(atPath: errorURL.path, contents: nil)
+
+        let outputHandle = try FileHandle(forWritingTo: outputURL)
+        let errorHandle = try FileHandle(forWritingTo: errorURL)
+        let process = Process()
         process.executableURL = executableURL
         process.arguments = arguments
-        process.standardOutput = standardOutput
-        process.standardError = standardError
+        process.standardOutput = outputHandle
+        process.standardError = errorHandle
+
+        defer {
+            try? outputHandle.close()
+            try? errorHandle.close()
+            try? fileManager.removeItem(at: captureDirectory)
+        }
 
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
 
             return try await withThrowingTaskGroup(of: LocalWhisperProcessResult.self) { group in
                 group.addTask {
-                    return try await withCheckedThrowingContinuation { continuation in
+                    try await withCheckedThrowingContinuation { continuation in
                         process.terminationHandler = { process in
-                            let outputData = standardOutput.fileHandleForReading.readDataToEndOfFile()
-                            let errorData = standardError.fileHandleForReading.readDataToEndOfFile()
+                            try? outputHandle.close()
+                            try? errorHandle.close()
+                            let outputData = (try? Data(contentsOf: outputURL)) ?? Data()
+                            let errorData = (try? Data(contentsOf: errorURL)) ?? Data()
                             continuation.resume(returning: LocalWhisperProcessResult(
                                 exitCode: process.terminationStatus,
                                 standardOutput: String(decoding: outputData, as: UTF8.self),
@@ -62,7 +82,11 @@ final class FoundationLocalWhisperProcessRunner: LocalWhisperProcessRunning, @un
                         do {
                             try process.run()
                         } catch {
-                            continuation.resume(throwing: LocalWhisperProcessError.failedToLaunch(error.localizedDescription))
+                            try? outputHandle.close()
+                            try? errorHandle.close()
+                            continuation.resume(
+                                throwing: LocalWhisperProcessError.failedToLaunch(error.localizedDescription)
+                            )
                         }
                     }
                 }
@@ -139,7 +163,7 @@ final class LocalWhisperSpeechProvider: SpeechProvider {
         guard fileManager.isExecutableFile(atPath: executableURL.path) else {
             throw LocalWhisperSpeechProviderError.runtimeUnavailable
         }
-        guard fileManager.fileExists(atPath: modelURL.path) else {
+        guard fileManager.isReadableFile(atPath: modelURL.path) else {
             throw LocalWhisperSpeechProviderError.modelUnavailable
         }
 
@@ -161,7 +185,8 @@ final class LocalWhisperSpeechProvider: SpeechProvider {
         var arguments = [
             "--model", modelURL.path,
             "--file", fileURL.path,
-            "--no-timestamps"
+            "--no-timestamps",
+            "--no-prints"
         ]
 
         if let language, !language.isEmpty {
@@ -197,8 +222,12 @@ final class LocalWhisperSpeechProvider: SpeechProvider {
         output
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty && !$0.hasPrefix("[") }
+            .filter { !$0.isEmpty && !looksLikeTimestampLine($0) }
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func looksLikeTimestampLine(_ line: String) -> Bool {
+        line.hasPrefix("[") && line.contains("-->") && line.hasSuffix("]")
     }
 }
