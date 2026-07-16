@@ -19,21 +19,22 @@ concurrency:
 jobs:
   test-and-build:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 35
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Show Swift environment
+      - name: Show build environment
         run: |
           swift --version
           xcodebuild -version
+          cmake --version
 
       - name: Run tests
         run: make test
 
-      - name: Build development app
+      - name: Build development app with bundled runtime
         id: build
         continue-on-error: true
         shell: bash
@@ -47,7 +48,7 @@ jobs:
         run: |
           if [[ -f build.log ]]; then
             grep -E "(^|[[:space:]])(error:|fatal error:|warning:)|make(\[[0-9]+\])?: \*\*\*" build.log > build-diagnostics.txt || true
-            tail -n 120 build.log > build-tail.txt
+            tail -n 160 build.log > build-tail.txt
           else
             echo "build.log was not created" > build-diagnostics.txt
             cp build-diagnostics.txt build-tail.txt
@@ -71,5 +72,33 @@ jobs:
       - name: Verify app bundle
         if: steps.build.outcome == 'success'
         run: |
-          test -x "build/FreeFlow Dev.app/Contents/MacOS/FreeFlow Dev"
-          codesign --verify --deep --strict "build/FreeFlow Dev.app"
+          APP="build/FreeFlow Dev.app"
+          test -x "$APP/Contents/MacOS/FreeFlow Dev"
+          test -x "$APP/Contents/MacOS/whisper-cli"
+          test -f "$APP/Contents/Resources/whisper-runtime.json"
+          test -f "$APP/Contents/Resources/ThirdPartyNotices/whisper.cpp-LICENSE.txt"
+          bash scripts/verify-whisper-runtime.sh \
+            "$APP/Contents/MacOS/whisper-cli" \
+            "$APP/Contents/Resources/whisper-runtime.json" \
+            "$(uname -m)"
+          codesign --verify --strict "$APP/Contents/MacOS/whisper-cli"
+          codesign --verify --deep --strict "$APP"
+
+  verify-universal-whisper-runtime:
+    runs-on: macos-15
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build universal runtime
+        run: make whisper-runtime ARCH=universal
+
+      - name: Verify universal runtime
+        run: |
+          bash scripts/verify-whisper-runtime.sh \
+            build/whisper-runtime/universal/whisper-cli \
+            build/whisper-runtime/universal/whisper-runtime.json \
+            universal
+          lipo -verify_arch arm64 x86_64 build/whisper-runtime/universal/whisper-cli
