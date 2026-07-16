@@ -1,5 +1,11 @@
 import Foundation
 
+/// The existing OpenAI-compatible transcription client remains compatible with
+/// the provider boundary while application call sites migrate to the cloud adapter.
+extension TranscriptionService: SpeechProvider {
+    var capabilities: SpeechProviderCapabilities { .openAICompatibleCloud }
+}
+
 /// Cloud-backed speech provider that adapts the existing OpenAI-compatible
 /// transcription client to the provider-neutral `SpeechProvider` boundary.
 final class CloudSpeechProvider: SpeechProvider {
