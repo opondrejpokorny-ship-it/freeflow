@@ -11,6 +11,7 @@ struct LocalWhisperModelsSettingsView: View {
     @State private var states: [String: LocalWhisperModelState] = [:]
     @State private var managerError: String?
     @State private var runtimeStatus = LocalWhisperRuntimeDetector().detect()
+    @State private var advancedRuntimeSettingsExpanded = false
 
     private let manager: LocalWhisperModelManager?
     private let models = LocalWhisperModelCatalog.recommended
@@ -76,11 +77,29 @@ struct LocalWhisperModelsSettingsView: View {
                 }
             }
 
-            TextField("Optional path to whisper-cli", text: $customExecutablePath)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.caption, design: .monospaced))
+            if runtimeStatus.source == .bundled, let manifest = runtimeStatus.manifest {
+                Label(
+                    "Included with FreeFlow · commit \(manifest.commit.prefix(7)) · macOS \(manifest.minimumMacOSVersion)+",
+                    systemImage: "checkmark.shield.fill"
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
 
-            Text("FreeFlow checks this path first, then the app bundle, /opt/homebrew/bin, and /usr/local/bin. Realtime cloud streaming is ignored in Local mode.")
+            DisclosureGroup("Advanced runtime override", isExpanded: $advancedRuntimeSettingsExpanded) {
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("Optional path to whisper-cli", text: $customExecutablePath)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.caption, design: .monospaced))
+
+                    Text("A custom executable is checked before the bundled runtime. Clear this field to return to the FreeFlow-provided version.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 6)
+            }
+
+            Text("Realtime cloud streaming is ignored in Local mode. The bundled runtime runs without non-system dynamic libraries.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -189,10 +208,23 @@ struct LocalWhisperModelsSettingsView: View {
 
     private var runtimeDescription: String {
         guard runtimeStatus.isReady, let executableURL = runtimeStatus.executableURL else {
-            return "Not found. Install whisper.cpp or provide an executable path."
+            return "Bundled runtime not found. Reinstall FreeFlow or provide an advanced override."
         }
-        let acceleration = runtimeStatus.metalIsExpected ? "Metal expected" : "CPU"
-        return "Ready at \(executableURL.path) · \(acceleration)"
+
+        let acceleration = runtimeStatus.metalIsExpected ? "Metal" : "CPU"
+        switch runtimeStatus.source {
+        case .bundled:
+            let version = runtimeStatus.manifest?.version ?? "unknown version"
+            return "Bundled whisper.cpp \(version) · Ready · \(acceleration)"
+        case .custom:
+            return "Custom runtime · \(executableURL.path) · \(acceleration)"
+        case .homebrew:
+            return "Homebrew runtime · \(executableURL.path) · \(acceleration)"
+        case .system:
+            return "System runtime · \(executableURL.path) · \(acceleration)"
+        case .none:
+            return "Ready at \(executableURL.path) · \(acceleration)"
+        }
     }
 
     private func refreshRuntime() {
