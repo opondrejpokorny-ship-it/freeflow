@@ -48,9 +48,9 @@ actor LocalWhisperModelManager {
     ) throws {
         let resolvedDirectory: URL
         if let modelsDirectory {
-            resolvedDirectory = modelsDirectory
+            resolvedDirectory = modelsDirectory.standardizedFileURL
         } else {
-            resolvedDirectory = try Self.defaultModelsDirectory(fileManager: fileManager)
+            resolvedDirectory = try Self.defaultModelsDirectory(fileManager: fileManager).standardizedFileURL
         }
 
         self.fileManager = fileManager
@@ -74,18 +74,28 @@ actor LocalWhisperModelManager {
     }
 
     func modelURL(for descriptor: LocalWhisperModelDescriptor) throws -> URL {
-        guard !descriptor.id.isEmpty,
-              !descriptor.fileName.isEmpty,
-              descriptor.fileName == URL(fileURLWithPath: descriptor.fileName).lastPathComponent else {
+        let fileName = descriptor.fileName
+        guard !descriptor.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !fileName.isEmpty,
+              fileName != ".",
+              fileName != "..",
+              fileName == URL(fileURLWithPath: fileName).lastPathComponent else {
             throw LocalWhisperModelManagerError.invalidModelIdentifier
         }
-        return modelsDirectory.appendingPathComponent(descriptor.fileName, isDirectory: false)
+
+        let destination = modelsDirectory
+            .appendingPathComponent(fileName, isDirectory: false)
+            .standardizedFileURL
+        guard destination.deletingLastPathComponent() == modelsDirectory else {
+            throw LocalWhisperModelManagerError.invalidModelIdentifier
+        }
+        return destination
     }
 
     func state(for descriptor: LocalWhisperModelDescriptor) async -> LocalWhisperModelState {
         do {
             let destination = try modelURL(for: descriptor)
-            guard fileManager.fileExists(atPath: destination.path) else {
+            guard fileManager.isReadableFile(atPath: destination.path) else {
                 return .notInstalled
             }
 
@@ -103,25 +113,40 @@ actor LocalWhisperModelManager {
         progress: @escaping ProgressHandler = { _ in }
     ) async -> LocalWhisperModelState {
         progress(0)
+        var temporaryURL: URL?
+        var stagedURL: URL?
+        defer {
+            if let temporaryURL { try? fileManager.removeItem(at: temporaryURL) }
+            if let stagedURL { try? fileManager.removeItem(at: stagedURL) }
+        }
+
         do {
             let destination = try modelURL(for: descriptor)
-            let temporaryURL = try await downloader(descriptor.downloadURL) { value in
+            let downloadedURL = try await downloader(descriptor.downloadURL) { value in
                 progress(value.map { min(max($0, 0), 1) })
             }
-            let checksum = try Self.sha256(of: temporaryURL)
+            temporaryURL = downloadedURL
+            let checksum = try Self.sha256(of: downloadedURL)
 
             guard checksum.caseInsensitiveCompare(descriptor.sha256) == .orderedSame else {
-                try? fileManager.removeItem(at: temporaryURL)
                 throw LocalWhisperModelManagerError.invalidChecksum(
                     expected: descriptor.sha256,
                     actual: checksum
                 )
             }
 
+            let staged = modelsDirectory
+                .appendingPathComponent(".\(descriptor.fileName).\(UUID().uuidString).partial")
+            stagedURL = staged
+            try fileManager.moveItem(at: downloadedURL, to: staged)
+            temporaryURL = nil
+
             if fileManager.fileExists(atPath: destination.path) {
-                try fileManager.removeItem(at: destination)
+                _ = try fileManager.replaceItemAt(destination, withItemAt: staged)
+            } else {
+                try fileManager.moveItem(at: staged, to: destination)
             }
-            try fileManager.moveItem(at: temporaryURL, to: destination)
+            stagedURL = nil
             progress(1)
             return .ready(destination)
         } catch LocalWhisperModelManagerError.invalidChecksum {
@@ -138,9 +163,14 @@ actor LocalWhisperModelManager {
     }
 
     static func sha256(of fileURL: URL) throws -> String {
-        let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-        let digest = SHA256.hash(data: data)
-        return digest.map { String(format: "%02x", $0) }.joined()
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
+            hasher.update(data: data)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     static func defaultDownload(
@@ -212,6 +242,12 @@ private final class LocalWhisperDownloadClient: NSObject, URLSessionDownloadDele
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
     ) {
+        if let response = downloadTask.response as? HTTPURLResponse,
+           !(200..<300).contains(response.statusCode) {
+            finish(.failure(URLError(.badServerResponse)))
+            return
+        }
+
         do {
             let retainedURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("freeflow-whisper-\(UUID().uuidString).download")
