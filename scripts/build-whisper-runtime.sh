@@ -64,7 +64,7 @@ build_architecture() {
     local build_dir="${BUILD_ROOT}/${target_arch}"
     local executable="${build_dir}/bin/whisper-cli"
 
-    cmake -S "${SOURCE_DIR}" -B "${build_dir}" \
+    cmake -Wno-deprecated -S "${SOURCE_DIR}" -B "${build_dir}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_OSX_ARCHITECTURES="${target_arch}" \
         -DCMAKE_OSX_DEPLOYMENT_TARGET="${MINIMUM_MACOS_VERSION}" \
@@ -76,6 +76,8 @@ build_architecture() {
         -DWHISPER_SDL2=OFF \
         -DGGML_NATIVE=OFF \
         -DGGML_OPENMP=OFF \
+        -DGGML_BLAS=OFF \
+        -DGGML_CCACHE=OFF \
         -DGGML_METAL=ON \
         -DGGML_METAL_EMBED_LIBRARY=ON >&2
 
@@ -98,8 +100,7 @@ verify_system_dependencies_only() {
 
     unexpected_dependencies="$(
         otool -L "${executable}" \
-            | tail -n +2 \
-            | awk '{print $1}' \
+            | awk 'NR > 1 && /^[[:space:]]/ { print $1 }' \
             | grep -Ev '^(/System/Library/|/usr/lib/)' \
             || true
     )"
