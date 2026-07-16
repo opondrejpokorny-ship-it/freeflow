@@ -18,6 +18,7 @@ TEST_SOURCES = \
 	Sources/LanguageCatalog.swift \
 	Sources/LanguageService.swift \
 	Sources/LLMAPITransport.swift \
+	Sources/LocalWhisperModelCatalog.swift \
 	Sources/LocalWhisperModelManager.swift \
 	Sources/LocalWhisperRuntime.swift \
 	Sources/ModelConfiguration.swift \
