@@ -70,19 +70,38 @@ jobs:
         run: exit 1
 
       - name: Verify app bundle
+        id: verify_app
         if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
         run: |
-          APP="build/FreeFlow Dev.app"
-          test -x "$APP/Contents/MacOS/FreeFlow Dev"
-          test -x "$APP/Contents/MacOS/whisper-cli"
-          test -f "$APP/Contents/Resources/whisper-runtime.json"
-          test -f "$APP/Contents/Resources/ThirdPartyNotices/whisper.cpp-LICENSE.txt"
-          bash scripts/verify-whisper-runtime.sh \
-            "$APP/Contents/MacOS/whisper-cli" \
-            "$APP/Contents/Resources/whisper-runtime.json" \
-            "$(uname -m)"
-          codesign --verify --strict "$APP/Contents/MacOS/whisper-cli"
-          codesign --verify --deep --strict "$APP"
+          set -o pipefail
+          {
+            APP="build/FreeFlow Dev.app"
+            test -x "$APP/Contents/MacOS/FreeFlow Dev"
+            test -x "$APP/Contents/MacOS/whisper-cli"
+            test -f "$APP/Contents/Resources/whisper-runtime.json"
+            test -f "$APP/Contents/Resources/ThirdPartyNotices/whisper.cpp-LICENSE.txt"
+            bash scripts/verify-whisper-runtime.sh \
+              "$APP/Contents/MacOS/whisper-cli" \
+              "$APP/Contents/Resources/whisper-runtime.json" \
+              "$(uname -m)"
+            codesign --verify --strict "$APP/Contents/MacOS/whisper-cli"
+            codesign --verify --deep --strict "$APP"
+          } 2>&1 | tee app-bundle-verification.log
+
+      - name: Upload app bundle verification diagnostics
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-bundle-verification-diagnostics
+          path: app-bundle-verification.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail when app bundle verification failed
+        if: steps.verify_app.outcome == 'failure'
+        run: exit 1
 
   verify-universal-whisper-runtime:
     runs-on: macos-15
