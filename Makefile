@@ -14,6 +14,7 @@ SOURCES = $(shell find Sources -name '*.swift' -type f | LC_ALL=C sort)
 TEST_RUNNER = $(BUILD_DIR)/FreeFlowTests
 TEST_SOURCES = \
 	Sources/AppContextService.swift \
+	Sources/CloudSpeechProvider.swift \
 	Sources/LanguageCatalog.swift \
 	Sources/LanguageService.swift \
 	Sources/LLMAPITransport.swift \
