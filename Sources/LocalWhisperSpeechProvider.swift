@@ -48,12 +48,6 @@ final class FoundationLocalWhisperProcessRunner: LocalWhisperProcessRunning, @un
 
             return try await withThrowingTaskGroup(of: LocalWhisperProcessResult.self) { group in
                 group.addTask {
-                    do {
-                        try process.run()
-                    } catch {
-                        throw LocalWhisperProcessError.failedToLaunch(error.localizedDescription)
-                    }
-
                     return try await withCheckedThrowingContinuation { continuation in
                         process.terminationHandler = { process in
                             let outputData = standardOutput.fileHandleForReading.readDataToEndOfFile()
@@ -63,6 +57,12 @@ final class FoundationLocalWhisperProcessRunner: LocalWhisperProcessRunning, @un
                                 standardOutput: String(decoding: outputData, as: UTF8.self),
                                 standardError: String(decoding: errorData, as: UTF8.self)
                             ))
+                        }
+
+                        do {
+                            try process.run()
+                        } catch {
+                            continuation.resume(throwing: LocalWhisperProcessError.failedToLaunch(error.localizedDescription))
                         }
                     }
                 }
@@ -161,9 +161,7 @@ final class LocalWhisperSpeechProvider: SpeechProvider {
         var arguments = [
             "--model", modelURL.path,
             "--file", fileURL.path,
-            "--no-timestamps",
-            "--output-txt",
-            "--output-file", "-"
+            "--no-timestamps"
         ]
 
         if let language, !language.isEmpty {
