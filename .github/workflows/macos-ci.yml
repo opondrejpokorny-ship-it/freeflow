@@ -34,9 +34,42 @@ jobs:
         run: make test
 
       - name: Build development app
-        run: make CODESIGN_IDENTITY=-
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          make CODESIGN_IDENTITY=- 2>&1 | tee build.log
+
+      - name: Extract build diagnostics
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f build.log ]]; then
+            grep -E "(^|[[:space:]])(error:|fatal error:|warning:)|make(\[[0-9]+\])?: \*\*\*" build.log > build-diagnostics.txt || true
+            tail -n 120 build.log > build-tail.txt
+          else
+            echo "build.log was not created" > build-diagnostics.txt
+            cp build-diagnostics.txt build-tail.txt
+          fi
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-diagnostics
+          path: |
+            build-diagnostics.txt
+            build-tail.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail when build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
 
       - name: Verify app bundle
+        if: steps.build.outcome == 'success'
         run: |
           test -x "build/FreeFlow Dev.app/Contents/MacOS/FreeFlow Dev"
           codesign --verify --deep --strict "build/FreeFlow Dev.app"
