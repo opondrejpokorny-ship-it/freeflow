@@ -1,8 +1,16 @@
 import SwiftUI
 
 struct LocalWhisperModelsSettingsView: View {
+    @AppStorage(AppState.speechExecutionModeStorageKey)
+    private var executionModeRawValue = SpeechExecutionMode.cloud.rawValue
+    @AppStorage(AppState.localWhisperModelIDStorageKey)
+    private var selectedModelID = "base"
+    @AppStorage(AppState.localWhisperExecutablePathStorageKey)
+    private var customExecutablePath = ""
+
     @State private var states: [String: LocalWhisperModelState] = [:]
     @State private var managerError: String?
+    @State private var runtimeStatus = LocalWhisperRuntimeDetector().detect()
 
     private let manager: LocalWhisperModelManager?
     private let models = LocalWhisperModelCatalog.recommended
@@ -16,14 +24,75 @@ struct LocalWhisperModelsSettingsView: View {
         }
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Local Whisper Models", systemImage: "waveform.badge.mic")
-                .font(.headline)
+    private var executionMode: SpeechExecutionMode {
+        SpeechExecutionMode(rawValue: executionModeRawValue) ?? .cloud
+    }
 
-            Text("Models are stored only on this Mac. Local transcription remains disabled until the local provider is implemented.")
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Picker("Transcription mode", selection: $executionModeRawValue) {
+                Text("Cloud").tag(SpeechExecutionMode.cloud.rawValue)
+                Text("Local (offline)").tag(SpeechExecutionMode.local.rawValue)
+            }
+            .pickerStyle(.segmented)
+
+            Text(executionMode == .local
+                 ? "Audio is transcribed on this Mac. FreeFlow does not silently fall back to Cloud."
+                 : "Audio is sent to the configured OpenAI-compatible transcription provider.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if executionMode == .local {
+                runtimeSection
+                Divider()
+                modelSection
+            }
+        }
+        .task {
+            if LocalWhisperModelCatalog.entry(id: selectedModelID)?.isInstallable != true {
+                selectedModelID = "base"
+            }
+            refreshRuntime()
+            await refreshStates()
+        }
+        .onChange(of: customExecutablePath) { _ in
+            refreshRuntime()
+        }
+    }
+
+    private var runtimeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("whisper.cpp runtime")
+                        .font(.subheadline.weight(.semibold))
+                    Text(runtimeDescription)
+                        .font(.caption)
+                        .foregroundStyle(runtimeStatus.isReady ? Color.secondary : Color.orange)
+                }
+                Spacer()
+                Button("Detect") {
+                    refreshRuntime()
+                }
+            }
+
+            TextField("Optional path to whisper-cli", text: $customExecutablePath)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.caption, design: .monospaced))
+
+            Text("FreeFlow checks this path first, then the app bundle, /opt/homebrew/bin, and /usr/local/bin. Realtime cloud streaming is ignored in Local mode.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var modelSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Active local model", selection: $selectedModelID) {
+                ForEach(models.filter(\.isInstallable)) { model in
+                    Text(model.displayName).tag(model.id)
+                }
+            }
 
             if let managerError {
                 Label(managerError, systemImage: "exclamationmark.triangle.fill")
@@ -38,9 +107,6 @@ struct LocalWhisperModelsSettingsView: View {
                 }
             }
         }
-        .task {
-            await refreshStates()
-        }
     }
 
     @ViewBuilder
@@ -48,8 +114,17 @@ struct LocalWhisperModelsSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(model.displayName)
-                        .font(.subheadline.weight(.semibold))
+                    HStack(spacing: 6) {
+                        Text(model.displayName)
+                            .font(.subheadline.weight(.semibold))
+                        if selectedModelID == model.id {
+                            Text("Selected")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                        }
+                    }
                     Text("\(ByteCountFormatter.string(fromByteCount: model.approximateSizeBytes, countStyle: .file)) · \(model.qualityDescription)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -67,7 +142,7 @@ struct LocalWhisperModelsSettingsView: View {
             }
 
             if !model.isInstallable {
-                Label("Download disabled until the upstream file's SHA-256 is independently verified.", systemImage: "lock.shield")
+                Label("Download locked until this pinned file's SHA-256 is verified.", systemImage: "lock.shield")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -88,8 +163,15 @@ struct LocalWhisperModelsSettingsView: View {
                 .disabled(true)
 
         case .ready:
-            Button("Remove", role: .destructive) {
-                remove(model)
+            HStack(spacing: 8) {
+                if selectedModelID != model.id {
+                    Button("Use") {
+                        selectedModelID = model.id
+                    }
+                }
+                Button("Remove", role: .destructive) {
+                    remove(model)
+                }
             }
 
         case .invalidChecksum:
@@ -103,6 +185,25 @@ struct LocalWhisperModelsSettingsView: View {
             }
             .disabled(!model.isInstallable || manager == nil)
         }
+    }
+
+    private var runtimeDescription: String {
+        guard runtimeStatus.isReady, let executableURL = runtimeStatus.executableURL else {
+            return "Not found. Install whisper.cpp or provide an executable path."
+        }
+        let acceleration = runtimeStatus.metalIsExpected ? "Metal expected" : "CPU"
+        return "Ready at \(executableURL.path) · \(acceleration)"
+    }
+
+    private func refreshRuntime() {
+        let trimmed = customExecutablePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let customURL: URL?
+        if trimmed.isEmpty {
+            customURL = nil
+        } else {
+            customURL = URL(fileURLWithPath: NSString(string: trimmed).expandingTildeInPath)
+        }
+        runtimeStatus = LocalWhisperRuntimeDetector(customExecutableURL: customURL).detect()
     }
 
     private func refreshStates() async {
@@ -125,7 +226,12 @@ struct LocalWhisperModelsSettingsView: View {
                     states[model.id] = .downloading(progress: progress)
                 }
             }
-            states[model.id] = state
+            await MainActor.run {
+                states[model.id] = state
+                if case .ready = state {
+                    selectedModelID = model.id
+                }
+            }
         }
     }
 
@@ -134,9 +240,13 @@ struct LocalWhisperModelsSettingsView: View {
         Task {
             do {
                 try await manager.remove(descriptor)
-                states[model.id] = .notInstalled
+                await MainActor.run {
+                    states[model.id] = .notInstalled
+                }
             } catch {
-                states[model.id] = .failed(error.localizedDescription)
+                await MainActor.run {
+                    states[model.id] = .failed(error.localizedDescription)
+                }
             }
         }
     }
