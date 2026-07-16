@@ -14,6 +14,8 @@ struct AppContextServiceTests {
         testLanguageServiceNormalizesInputCodes()
         testLanguageServiceMigratesLegacyOutputNames()
         testLanguageServicePersistsCanonicalValues()
+        testSpeechProviderCapabilities()
+        testCloudTranscriptionConformsToSpeechProvider()
         print("AppContextServiceTests passed")
     }
 
@@ -145,6 +147,27 @@ struct AppContextServiceTests {
         LanguageService.saveInputLanguage("YUE-Hant-HK", defaults: defaults)
         expectEqual(defaults.string(forKey: LanguageService.outputLanguageStorageKey), "sk")
         expectEqual(defaults.string(forKey: LanguageService.inputLanguageStorageKey), "yue")
+    }
+
+    private static func testSpeechProviderCapabilities() {
+        let capabilities = SpeechProviderCapabilities.openAICompatibleCloud
+
+        expect(capabilities.executionMode == .cloud, "Cloud provider should report cloud execution")
+        expect(capabilities.supportsAutomaticLanguageDetection, "Cloud provider should support auto-detection")
+        expect(capabilities.supportsLanguageHint, "Cloud provider should support language hints")
+        expect(capabilities.requiresNetwork, "Cloud provider should require a network")
+        expect(Set(SpeechExecutionMode.allCases) == Set([.cloud, .local, .hybrid]), "Execution modes are incomplete")
+    }
+
+    private static func testCloudTranscriptionConformsToSpeechProvider() {
+        guard let service = try? TranscriptionService(apiKey: "test-key") else {
+            fatalError("Unable to construct cloud transcription provider")
+        }
+        expectSpeechProvider(service)
+    }
+
+    private static func expectSpeechProvider(_ provider: any SpeechProvider) {
+        _ = provider
     }
 
     private static func expectEqual(_ actual: String?, _ expected: String, file: StaticString = #file, line: UInt = #line) {
