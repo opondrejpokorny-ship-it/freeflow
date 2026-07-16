@@ -713,6 +713,9 @@ struct GeneralSettingsView: View {
                 SettingsCard("API Key", icon: "key.fill") {
                     apiKeySection
                 }
+                SettingsCard("Speech Recognition", icon: "waveform.badge.mic") {
+                    LocalWhisperModelsSettingsView()
+                }
                 SettingsCard("Output Language", icon: "globe") {
                     outputLanguageSection
                 }
