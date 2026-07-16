@@ -30,9 +30,3 @@ struct SpeechProviderCapabilities: Equatable, Sendable {
         requiresNetwork: true
     )
 }
-
-/// The existing OpenAI-compatible transcription client remains compatible with
-/// the provider boundary while application call sites migrate to the cloud adapter.
-extension TranscriptionService: SpeechProvider {
-    var capabilities: SpeechProviderCapabilities { .openAICompatibleCloud }
-}
