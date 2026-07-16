@@ -18,6 +18,8 @@ TEST_SOURCES = \
 	Sources/LanguageService.swift \
 	Sources/LLMAPITransport.swift \
 	Sources/ModelConfiguration.swift \
+	Sources/SpeechProvider.swift \
+	Sources/TranscriptionService.swift \
 	Tests/AppContextServiceTests.swift
 RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
