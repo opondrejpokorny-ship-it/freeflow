@@ -57,8 +57,7 @@ esac
 
 unexpected_dependencies="$(
     otool -L "${executable}" \
-        | tail -n +2 \
-        | awk '{print $1}' \
+        | awk 'NR > 1 && /^[[:space:]]/ { print $1 }' \
         | grep -Ev '^(/System/Library/|/usr/lib/)' \
         || true
 )"
