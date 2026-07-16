@@ -124,17 +124,44 @@ struct LocalWhisperSpeechProviderTests {
 
         let nonExecutable = fixture.directoryURL.appendingPathComponent("not-runnable")
         let bundled = fixture.directoryURL.appendingPathComponent("bundled-whisper-cli")
+        let manifestURL = fixture.directoryURL.appendingPathComponent("whisper-runtime.json")
         try! Data().write(to: nonExecutable)
         try! Data("#!/bin/sh\n".utf8).write(to: bundled)
         try! FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bundled.path)
+        try! Data(runtimeManifestJSON.utf8).write(to: manifestURL)
 
         let status = LocalWhisperRuntimeDetector(
             bundledExecutableURL: bundled,
+            bundledManifestURL: manifestURL,
             customExecutableURL: nonExecutable,
             commonExecutableURLs: []
         ).detect()
         expect(status.executableURL == bundled, "Detector should continue after a non-runnable custom path")
         expect(status.isReady, "Runnable bundled executable should be ready")
+        expect(status.source == .bundled, "Bundled executable source was not preserved")
+        expect(status.manifest?.version == "1.9.1", "Bundled runtime manifest was not loaded")
+        expect(
+            status.manifest?.commit == "f049fff95a089aa9969deb009cdd4892b3e74916",
+            "Bundled runtime commit was not loaded"
+        )
+    }
+
+    private static var runtimeManifestJSON: String {
+        """
+        {
+          "schemaVersion": 1,
+          "name": "whisper.cpp",
+          "version": "1.9.1",
+          "commit": "f049fff95a089aa9969deb009cdd4892b3e74916",
+          "sourceRepository": "https://github.com/ggml-org/whisper.cpp.git",
+          "architectures": ["arm64", "x86_64"],
+          "minimumMacOSVersion": "13.0",
+          "sharedLibraries": false,
+          "metalEnabled": true,
+          "metalLibraryEmbedded": true,
+          "nativeOptimizations": false
+        }
+        """
     }
 
     private static func testModelManagerRejectsUnsafeFileNames() async {

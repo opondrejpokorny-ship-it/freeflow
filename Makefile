@@ -3,8 +3,10 @@ BUNDLE_ID ?= com.zachlatta.freeflow.dev
 BUILD_DIR = build
 APP_BUNDLE = $(BUILD_DIR)/$(APP_NAME).app
 CODESIGN_IDENTITY ?= FreeFlow Dev
+BUNDLE_WHISPER_RUNTIME ?= 1
 CONTENTS = $(APP_BUNDLE)/Contents
 MACOS_DIR = $(CONTENTS)/MacOS
+RESOURCES = $(CONTENTS)/Resources
 empty :=
 space := $(empty) $(empty)
 APP_EXECUTABLE = $(MACOS_DIR)/$(APP_NAME)
@@ -38,8 +40,20 @@ LOCAL_WHISPER_TEST_SOURCES = \
 	Sources/SpeechProvider.swift \
 	Sources/SpeechProviderFactory.swift \
 	Tests/LocalWhisperSpeechProviderTests.swift
-RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
+WHISPER_RUNTIME_OUTPUT_DIR = $(BUILD_DIR)/whisper-runtime/$(ARCH)
+WHISPER_RUNTIME_EXECUTABLE = $(WHISPER_RUNTIME_OUTPUT_DIR)/whisper-cli
+WHISPER_RUNTIME_MANIFEST = $(WHISPER_RUNTIME_OUTPUT_DIR)/whisper-runtime.json
+WHISPER_RUNTIME_BUILD_SCRIPT = scripts/build-whisper-runtime.sh
+WHISPER_RUNTIME_VERIFY_SCRIPT = scripts/verify-whisper-runtime.sh
+THIRD_PARTY_NOTICES_DIR = Resources/ThirdPartyNotices
+THIRD_PARTY_NOTICE_FILES = $(shell find $(THIRD_PARTY_NOTICES_DIR) -type f | LC_ALL=C sort)
+
+ifeq ($(BUNDLE_WHISPER_RUNTIME),1)
+APP_RUNTIME_DEPENDENCIES = $(WHISPER_RUNTIME_EXECUTABLE)
+else
+APP_RUNTIME_DEPENDENCIES =
+endif
 
 # Pick the icon source based on which bundle we are building. Dev builds get
 # a distinct hammer-on-waveform icon so a developer's dock shows at a glance
@@ -52,11 +66,11 @@ ICON_SOURCE = Resources/AppIcon-Source.png
 ICON_ICNS = Resources/AppIcon.icns
 endif
 
-.PHONY: all clean run icon dmg codesign-dmg notarize test
+.PHONY: all clean run icon dmg codesign-dmg notarize test whisper-runtime verify-whisper-runtime
 
 all: $(APP_EXECUTABLE_TARGET)
 
-$(APP_EXECUTABLE_TARGET): $(SOURCES) Info.plist $(ICON_ICNS)
+$(APP_EXECUTABLE_TARGET): $(SOURCES) Info.plist $(ICON_ICNS) $(APP_RUNTIME_DEPENDENCIES) $(THIRD_PARTY_NOTICE_FILES)
 	@mkdir -p "$(MACOS_DIR)" "$(RESOURCES)"
 ifeq ($(ARCH),universal)
 	swiftc \
@@ -89,11 +103,36 @@ endif
 	@plutil -replace CFBundleExecutable -string "$(APP_NAME)" "$(CONTENTS)/Info.plist"
 	@plutil -replace CFBundleIdentifier -string "$(BUNDLE_ID)" "$(CONTENTS)/Info.plist"
 	@cp $(ICON_ICNS) "$(RESOURCES)/AppIcon.icns"
+	@rm -rf "$(RESOURCES)/ThirdPartyNotices"
+	@cp -R "$(THIRD_PARTY_NOTICES_DIR)" "$(RESOURCES)/ThirdPartyNotices"
 	@plutil -replace NSMicrophoneUsageDescription -string "$(APP_NAME) needs microphone access to transcribe your speech." "$(CONTENTS)/Info.plist"
 	@plutil -replace NSSpeechRecognitionUsageDescription -string "$(APP_NAME) needs speech recognition to convert your voice to text." "$(CONTENTS)/Info.plist"
 	@plutil -replace NSAccessibilityUsageDescription -string "$(APP_NAME) needs accessibility access to detect the text cursor position and paste transcribed text." "$(CONTENTS)/Info.plist"
+ifeq ($(BUNDLE_WHISPER_RUNTIME),1)
+	@test -x "$(WHISPER_RUNTIME_EXECUTABLE)"
+	@test -f "$(WHISPER_RUNTIME_MANIFEST)"
+	@cp "$(WHISPER_RUNTIME_EXECUTABLE)" "$(MACOS_DIR)/whisper-cli"
+	@cp "$(WHISPER_RUNTIME_MANIFEST)" "$(RESOURCES)/whisper-runtime.json"
+	@chmod 0755 "$(MACOS_DIR)/whisper-cli"
+	@codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" "$(MACOS_DIR)/whisper-cli"
+else
+	@rm -f "$(MACOS_DIR)/whisper-cli" "$(RESOURCES)/whisper-runtime.json"
+endif
+	@rm -f "$(RESOURCES)/whisper-cli"
 	@codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" --entitlements FreeFlow.entitlements "$(APP_BUNDLE)"
 	@echo "Built $(APP_BUNDLE)"
+
+$(WHISPER_RUNTIME_EXECUTABLE): $(WHISPER_RUNTIME_BUILD_SCRIPT)
+	@mkdir -p "$(WHISPER_RUNTIME_OUTPUT_DIR)"
+	@ARCH="$(ARCH)" OUTPUT_DIR="$(abspath $(WHISPER_RUNTIME_OUTPUT_DIR))" bash "$(WHISPER_RUNTIME_BUILD_SCRIPT)"
+
+whisper-runtime: $(WHISPER_RUNTIME_EXECUTABLE)
+
+verify-whisper-runtime: whisper-runtime
+	@bash "$(WHISPER_RUNTIME_VERIFY_SCRIPT)" \
+		"$(WHISPER_RUNTIME_EXECUTABLE)" \
+		"$(WHISPER_RUNTIME_MANIFEST)" \
+		"$(ARCH)"
 
 test: $(TEST_RUNNER) $(LOCAL_WHISPER_TEST_RUNNER)
 	@$(TEST_RUNNER)
