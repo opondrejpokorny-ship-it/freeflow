@@ -6,6 +6,7 @@ on:
       - feature/multilingual-foundation
     paths:
       - .github/workflows/apply-multilingual-refactor.yml
+      - scripts/apply_multilingual_refactor_v2.py
   workflow_dispatch:
 
 permissions:
@@ -35,7 +36,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python3 scripts/apply_multilingual_refactor.py 2>&1 | tee apply-refactor.log
+          python3 scripts/apply_multilingual_refactor_v2.py 2>&1 | tee apply-refactor.log
 
       - name: Validate patch formatting
         id: validate
