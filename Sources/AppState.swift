@@ -213,7 +213,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private let savedToggleCustomShortcutStorageKey = "saved_toggle_custom_shortcut"
     private let savedCopyAgainCustomShortcutStorageKey = "saved_copy_again_custom_shortcut"
     private let customVocabularyStorageKey = "custom_vocabulary"
-    private let transcriptionLanguageStorageKey = "transcription_language"
     private let selectedMicrophoneStorageKey = "selected_microphone_id"
     private let customSystemPromptStorageKey = "custom_system_prompt"
     private let customContextPromptStorageKey = "custom_context_prompt"
@@ -232,7 +231,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private let commandModeEnabledStorageKey = "command_mode_enabled"
     private let commandModeStyleStorageKey = "command_mode_style"
     private let commandModeManualModifierStorageKey = "command_mode_manual_modifier"
-    private let outputLanguageStorageKey = "output_language"
     private let realtimeStreamingEnabledStorageKey = "realtime_streaming_enabled"
     private let realtimeStreamingModelStorageKey = "realtime_streaming_model"
     private let dictationAudioInterruptionEnabledStorageKey = "dictation_audio_interruption_enabled"
@@ -243,38 +241,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
     static let defaultContextScreenshotMaxDimension = Int(AppContextService.defaultScreenshotMaxDimension)
     static let contextScreenshotDimensionOptions = [1024, 768, 640, 512]
     static let defaultTranscriptionModel = "whisper-large-v3"
-    static let transcriptionLanguageOptions: [(code: String, name: String)] = [
-        ("", "Auto-detect"),
-        ("en", "English"),
-        ("es", "Spanish"),
-        ("fr", "French"),
-        ("de", "German"),
-        ("it", "Italian"),
-        ("pt", "Portuguese"),
-        ("nl", "Dutch"),
-        ("ru", "Russian"),
-        ("ja", "Japanese"),
-        ("ko", "Korean"),
-        ("zh", "Chinese"),
-        ("ar", "Arabic"),
-        ("hi", "Hindi"),
-        ("tr", "Turkish"),
-        ("pl", "Polish"),
-        ("uk", "Ukrainian"),
-        ("sv", "Swedish"),
-        ("no", "Norwegian"),
-        ("da", "Danish"),
-        ("fi", "Finnish"),
-        ("cs", "Czech"),
-        ("el", "Greek"),
-        ("he", "Hebrew"),
-        ("vi", "Vietnamese"),
-        ("th", "Thai"),
-        ("id", "Indonesian"),
-        ("ro", "Romanian"),
-        ("hu", "Hungarian"),
-        ("ca", "Catalan")
-    ]
+    static var transcriptionLanguageOptions: [(code: String, name: String)] {
+        LanguageService.inputOptions()
+    }
     static let defaultPostProcessingModel = "openai/gpt-oss-20b"
     static let defaultPostProcessingFallbackModel = "qwen/qwen3.6-27b"
     static let defaultContextModel = "qwen/qwen3.6-27b"
@@ -409,12 +378,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     @Published var transcriptionLanguage: String {
         didSet {
-            let normalized = Self.normalizeTranscriptionLanguage(transcriptionLanguage)
+            let normalized = LanguageService.normalizedInputCode(transcriptionLanguage)
             if normalized != transcriptionLanguage {
                 transcriptionLanguage = normalized
                 return
             }
-            UserDefaults.standard.set(normalized, forKey: transcriptionLanguageStorageKey)
+            LanguageService.saveInputLanguage(normalized)
         }
     }
 
@@ -465,7 +434,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     @Published var outputLanguage: String {
         didSet {
-            UserDefaults.standard.set(outputLanguage, forKey: outputLanguageStorageKey)
+            let normalized = LanguageService.normalizedOutputCode(outputLanguage)
+            if normalized != outputLanguage {
+                outputLanguage = normalized
+                return
+            }
+            LanguageService.saveOutputLanguage(normalized)
         }
     }
 
@@ -657,9 +631,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             fallback: shortcuts.copyAgain.isCustom ? shortcuts.copyAgain : nil
         )
         let customVocabulary = UserDefaults.standard.string(forKey: customVocabularyStorageKey) ?? ""
-        let transcriptionLanguage = Self.normalizeTranscriptionLanguage(
-            UserDefaults.standard.string(forKey: transcriptionLanguageStorageKey) ?? ""
-        )
+        let transcriptionLanguage = LanguageService.loadInputLanguage()
         let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptStorageKey) ?? ""
         let customContextPrompt = UserDefaults.standard.string(forKey: customContextPromptStorageKey) ?? ""
         let instructionExecutionGuardEnabled = UserDefaults.standard.object(
@@ -669,7 +641,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             : UserDefaults.standard.bool(forKey: instructionExecutionGuardEnabledStorageKey)
         let customSystemPromptLastModified = UserDefaults.standard.string(forKey: customSystemPromptLastModifiedStorageKey) ?? ""
         let customContextPromptLastModified = UserDefaults.standard.string(forKey: customContextPromptLastModifiedStorageKey) ?? ""
-        let outputLanguage = UserDefaults.standard.string(forKey: outputLanguageStorageKey) ?? ""
+        let outputLanguage = LanguageService.loadOutputLanguage()
         let storedContextScreenshotMaxDimension = UserDefaults.standard.object(forKey: contextScreenshotMaxDimensionStorageKey) != nil
             ? UserDefaults.standard.integer(forKey: contextScreenshotMaxDimensionStorageKey)
             : Self.defaultContextScreenshotMaxDimension
@@ -1014,11 +986,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private static func normalizeTranscriptionLanguage(_ language: String) -> String {
-        let normalized = language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard transcriptionLanguageOptions.contains(where: { $0.code == normalized }) else {
-            return ""
-        }
-        return normalized
+        LanguageService.normalizedInputCode(language)
     }
 
     private var resolvedTranscriptionBaseURL: String {

@@ -12,6 +12,15 @@ APP_EXECUTABLE_TARGET := $(subst $(space),\ ,$(APP_EXECUTABLE))
 
 SOURCES = $(shell find Sources -name '*.swift' -type f | LC_ALL=C sort)
 TEST_RUNNER = $(BUILD_DIR)/FreeFlowTests
+TEST_SOURCES = \
+	Sources/AppContextService.swift \
+	Sources/LanguageCatalog.swift \
+	Sources/LanguageService.swift \
+	Sources/LLMAPITransport.swift \
+	Sources/ModelConfiguration.swift \
+	Sources/SpeechProvider.swift \
+	Sources/TranscriptionService.swift \
+	Tests/AppContextServiceTests.swift
 RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
 
@@ -72,14 +81,14 @@ endif
 test: $(TEST_RUNNER)
 	@$(TEST_RUNNER)
 
-$(TEST_RUNNER): Sources/AppContextService.swift Sources/LLMAPITransport.swift Sources/ModelConfiguration.swift Tests/AppContextServiceTests.swift
+$(TEST_RUNNER): $(TEST_SOURCES)
 	@mkdir -p "$(BUILD_DIR)"
 	swiftc \
 		-parse-as-library \
 		-o "$(TEST_RUNNER)" \
 		-sdk $(shell xcrun --show-sdk-path) \
 		-target $(ARCH)-apple-macosx13.0 \
-		Sources/AppContextService.swift Sources/LLMAPITransport.swift Sources/ModelConfiguration.swift Tests/AppContextServiceTests.swift
+		$(TEST_SOURCES)
 
 icon: $(ICON_ICNS)
 

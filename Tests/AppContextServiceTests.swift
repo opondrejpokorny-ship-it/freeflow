@@ -8,6 +8,14 @@ struct AppContextServiceTests {
         testNonStrippingModelPreservesExistingBehavior()
         testDeprecatedGroqModelsAreNotPredefined()
         testQwenCleanupDisablesReasoning()
+        testLanguageCatalogContainsCanonicalWhisperLanguages()
+        testLanguageCodeNormalization()
+        testLanguageOptionDefaults()
+        testLanguageServiceNormalizesInputCodes()
+        testLanguageServiceMigratesLegacyOutputNames()
+        testLanguageServicePersistsCanonicalValues()
+        testSpeechProviderCapabilities()
+        testCloudTranscriptionConformsToSpeechProvider()
         print("AppContextServiceTests passed")
     }
 
@@ -72,6 +80,94 @@ struct AppContextServiceTests {
 
         expect(config.reasoningEffort == "none", "Qwen cleanup should disable reasoning")
         expect(config.includeReasoning == false, "Qwen cleanup should exclude reasoning output")
+    }
+
+    private static func testLanguageCatalogContainsCanonicalWhisperLanguages() {
+        let languages = DictationLanguageCatalog.supported
+        let uniqueCodes = Set(languages.map(\.code))
+
+        expect(languages.count == 100, "Expected 100 canonical Whisper languages, got \(languages.count)")
+        expect(uniqueCodes.count == languages.count, "Language catalog contains duplicate codes")
+        expect(uniqueCodes.contains("cs"), "Czech is missing from the language catalog")
+        expect(uniqueCodes.contains("sk"), "Slovak is missing from the language catalog")
+        expect(uniqueCodes.contains("yue"), "Cantonese is missing from the language catalog")
+    }
+
+    private static func testLanguageCodeNormalization() {
+        expectEqual(DictationLanguageCatalog.normalizedCode("cs-CZ"), "cs")
+        expectEqual(DictationLanguageCatalog.normalizedCode(" pt_BR "), "pt")
+        expectEqual(DictationLanguageCatalog.normalizedCode("YUE-Hant-HK"), "yue")
+        expectEqual(DictationLanguageCatalog.normalizedCode(""), "")
+        expect(DictationLanguageCatalog.normalizedCode("xx-YY") == nil, "Unsupported language should return nil")
+    }
+
+    private static func testLanguageOptionDefaults() {
+        let locale = Locale(identifier: "en_US")
+        let inputOptions = DictationLanguageCatalog.inputOptions(locale: locale)
+        let outputOptions = DictationLanguageCatalog.outputOptions(locale: locale)
+
+        expect(inputOptions.first?.code == "", "Input options should start with auto-detect")
+        expect(inputOptions.first?.name == "Auto-detect", "Unexpected input default label")
+        expect(outputOptions.first?.code == "", "Output options should start with spoken-language preservation")
+        expect(outputOptions.first?.name == "Same as spoken language", "Unexpected output default label")
+        expect(inputOptions.count == 101, "Input options should include auto-detect and 100 languages")
+        expect(outputOptions.count == 101, "Output options should include default and 100 languages")
+    }
+
+    private static func testLanguageServiceNormalizesInputCodes() {
+        expectEqual(LanguageService.normalizedInputCode(" CS-cz "), "cs")
+        expectEqual(LanguageService.normalizedInputCode("pt_BR"), "pt")
+        expectEqual(LanguageService.normalizedInputCode("not-a-language"), "")
+    }
+
+    private static func testLanguageServiceMigratesLegacyOutputNames() {
+        expectEqual(LanguageService.normalizedOutputCode("English"), "en")
+        expectEqual(LanguageService.normalizedOutputCode("german"), "de")
+        expectEqual(LanguageService.normalizedOutputCode("Chinese (Traditional)"), "zh")
+        expectEqual(LanguageService.normalizedOutputCode("cs-CZ"), "cs")
+        expectEqual(LanguageService.outputPromptValue(for: "cs"), "Czech")
+    }
+
+    private static func testLanguageServicePersistsCanonicalValues() {
+        let suiteName = "LanguageServiceTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("Unable to create isolated UserDefaults suite")
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("Portuguese", forKey: LanguageService.outputLanguageStorageKey)
+        defaults.set("CS-cz", forKey: LanguageService.inputLanguageStorageKey)
+
+        expectEqual(LanguageService.loadOutputLanguage(defaults: defaults), "pt")
+        expectEqual(LanguageService.loadInputLanguage(defaults: defaults), "cs")
+        expectEqual(defaults.string(forKey: LanguageService.outputLanguageStorageKey), "pt")
+        expectEqual(defaults.string(forKey: LanguageService.inputLanguageStorageKey), "cs")
+
+        LanguageService.saveOutputLanguage("Slovak", defaults: defaults)
+        LanguageService.saveInputLanguage("YUE-Hant-HK", defaults: defaults)
+        expectEqual(defaults.string(forKey: LanguageService.outputLanguageStorageKey), "sk")
+        expectEqual(defaults.string(forKey: LanguageService.inputLanguageStorageKey), "yue")
+    }
+
+    private static func testSpeechProviderCapabilities() {
+        let capabilities = SpeechProviderCapabilities.openAICompatibleCloud
+
+        expect(capabilities.executionMode == .cloud, "Cloud provider should report cloud execution")
+        expect(capabilities.supportsAutomaticLanguageDetection, "Cloud provider should support auto-detection")
+        expect(capabilities.supportsLanguageHint, "Cloud provider should support language hints")
+        expect(capabilities.requiresNetwork, "Cloud provider should require a network")
+        expect(Set(SpeechExecutionMode.allCases) == Set([.cloud, .local, .hybrid]), "Execution modes are incomplete")
+    }
+
+    private static func testCloudTranscriptionConformsToSpeechProvider() {
+        guard let service = try? TranscriptionService(apiKey: "test-key") else {
+            fatalError("Unable to construct cloud transcription provider")
+        }
+        expectSpeechProvider(service)
+    }
+
+    private static func expectSpeechProvider(_ provider: any SpeechProvider) {
+        _ = provider
     }
 
     private static func expectEqual(_ actual: String?, _ expected: String, file: StaticString = #file, line: UInt = #line) {

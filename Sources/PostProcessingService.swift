@@ -168,6 +168,7 @@ Behavior:
         outputLanguage: String = ""
     ) async throws -> PostProcessingResult {
         let vocabularyTerms = mergedVocabularyTerms(rawVocabulary: customVocabulary)
+        let resolvedOutputLanguage = LanguageService.outputPromptValue(for: outputLanguage)
 
         let timeoutSeconds = postProcessingTimeoutSeconds
         return try await withThrowingTaskGroup(of: PostProcessingResult.self) { group in
@@ -180,7 +181,7 @@ Behavior:
                     contextSummary: context.contextSummary,
                     customVocabulary: vocabularyTerms,
                     customSystemPrompt: customSystemPrompt,
-                    outputLanguage: outputLanguage
+                    outputLanguage: resolvedOutputLanguage
                 )
             }
 
@@ -220,7 +221,7 @@ Behavior:
         guard !trimmedTranscript.isEmpty else {
             throw PostProcessingError.invalidInput("Transcript must not be empty")
         }
-        let trimmedLanguage = targetLanguage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLanguage = LanguageService.outputPromptValue(for: targetLanguage)
         guard !trimmedLanguage.isEmpty else {
             throw PostProcessingError.invalidInput("Target language must not be empty")
         }
@@ -263,6 +264,7 @@ Behavior:
         outputLanguage: String = ""
     ) async throws -> PostProcessingResult {
         let vocabularyTerms = mergedVocabularyTerms(rawVocabulary: customVocabulary)
+        let resolvedOutputLanguage = LanguageService.outputPromptValue(for: outputLanguage)
         let trimmedSelectedText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedVoiceCommand = voiceCommand.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSelectedText.isEmpty else {
@@ -283,7 +285,7 @@ Behavior:
                     voiceCommand: voiceCommand,
                     contextSummary: context.contextSummary,
                     customVocabulary: vocabularyTerms,
-                    outputLanguage: outputLanguage
+                    outputLanguage: resolvedOutputLanguage
                 )
             }
 
