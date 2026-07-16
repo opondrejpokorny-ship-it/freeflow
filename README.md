@@ -30,11 +30,12 @@ FreeFlow is a free Mac dictation app inspired by [Wispr Flow](https://wisprflow.
 ## Quick Start
 
 1. Download the app from above or [click here](https://github.com/zachlatta/freeflow/releases/latest/download/FreeFlow.dmg)
-2. Get a free Groq API key from [groq.com](https://groq.com/)
+2. Get a free Groq API key from [groq.com](https://groq.com/), or choose Local transcription in Settings and download a verified Whisper model
 3. Hold `Fn` to talk, or tap `Command-Fn` to start and stop dictation, and have whatever you say pasted into the current text field
 
 ## Features
 
+- **Bundled offline transcription:** Run the included, pinned `whisper.cpp` runtime on your Mac with a checksum-verified Tiny or Base model.
 - **Custom shortcuts:** Customize both hold-to-talk and toggle dictation shortcuts. If your toggle shortcut extends your hold shortcut, you can start in hold mode and press the extra modifier keys to latch into tap mode without stopping the recording.
 - **Context-aware cleanup:** FreeFlow can read nearby app context so names, terms, and phrases are spelled correctly when you dictate into email, terminals, docs, and other apps.
 - **Custom vocabulary:** Add names, jargon, and project-specific words that FreeFlow should preserve during cleanup.
@@ -46,7 +47,11 @@ Edit Mode lets you highlight existing text and transform it with a spoken instru
 
 ## Privacy
 
-There is no FreeFlow server, so FreeFlow does not store or retain your data. The only information that leaves your computer are API calls to your configured transcription and LLM provider.
+There is no FreeFlow server, so FreeFlow does not store or retain your data.
+
+- In **Cloud** transcription mode, recorded audio is sent to your configured transcription provider.
+- In **Local (offline)** transcription mode, recorded audio is processed on your Mac by the bundled `whisper.cpp` runtime and is not silently sent to a cloud transcription provider.
+- Context-aware cleanup, translation, and Edit Mode may still send the transcript and captured context to your configured LLM provider. Local transcription is therefore not the same as fully offline post-processing.
 
 ## Custom Cleanup
 
@@ -76,7 +81,15 @@ Then your response would be ONLY the cleaned up text, so here your response is O
 "Hey, I just wanted to follow up on the meeting from yesterday. I think we should definitely move the deadline to next Friday because the design team still needs more time to finish the mockups. Let me know if that works for you. Thanks."</code></pre>
 </details>
 
-## Using a Local Model
+## Local and Self-Hosted Options
+
+### Offline speech transcription
+
+Choose **Local (offline)** under Speech Recognition in Settings, then download a verified Tiny or Base model. FreeFlow includes a pinned `whisper.cpp` runtime for Apple Silicon and Intel Macs, so a separate Homebrew installation is not required. Advanced users can still override the executable path.
+
+Model files are downloaded only when selected and are verified with their pinned SHA-256 before use. FreeFlow does not silently fall back from Local transcription to Cloud transcription.
+
+### Local or self-hosted cleanup
 
 FreeFlow can use OpenAI-compatible local or self-hosted providers instead of Groq. In settings, configure the API base URL and model IDs for your local LLM provider, such as Ollama, LM Studio, or another OpenAI-compatible server. If your transcription backend uses a different endpoint from your LLM backend, set the transcription API URL separately.
 
