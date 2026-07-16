@@ -83,7 +83,8 @@ struct LocalWhisperRuntimeDetector {
 
     init(
         fileManager: FileManager = .default,
-        bundledExecutableURL: URL? = Bundle.main.url(forResource: "whisper-cli", withExtension: nil),
+        bundledExecutableURL: URL? = Bundle.main.url(forAuxiliaryExecutable: "whisper-cli")
+            ?? Bundle.main.url(forResource: "whisper-cli", withExtension: nil),
         bundledManifestURL: URL? = Bundle.main.url(forResource: "whisper-runtime", withExtension: "json"),
         customExecutableURL: URL? = nil,
         commonExecutableURLs: [URL] = [
