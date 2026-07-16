@@ -11,6 +11,9 @@ struct AppContextServiceTests {
         testLanguageCatalogContainsCanonicalWhisperLanguages()
         testLanguageCodeNormalization()
         testLanguageOptionDefaults()
+        testLanguageServiceNormalizesInputCodes()
+        testLanguageServiceMigratesLegacyOutputNames()
+        testLanguageServicePersistsCanonicalValues()
         print("AppContextServiceTests passed")
     }
 
@@ -107,6 +110,41 @@ struct AppContextServiceTests {
         expect(outputOptions.first?.name == "Same as spoken language", "Unexpected output default label")
         expect(inputOptions.count == 101, "Input options should include auto-detect and 100 languages")
         expect(outputOptions.count == 101, "Output options should include default and 100 languages")
+    }
+
+    private static func testLanguageServiceNormalizesInputCodes() {
+        expectEqual(LanguageService.normalizedInputCode(" CS-cz "), "cs")
+        expectEqual(LanguageService.normalizedInputCode("pt_BR"), "pt")
+        expectEqual(LanguageService.normalizedInputCode("not-a-language"), "")
+    }
+
+    private static func testLanguageServiceMigratesLegacyOutputNames() {
+        expectEqual(LanguageService.normalizedOutputCode("English"), "en")
+        expectEqual(LanguageService.normalizedOutputCode("german"), "de")
+        expectEqual(LanguageService.normalizedOutputCode("Chinese (Traditional)"), "zh")
+        expectEqual(LanguageService.normalizedOutputCode("cs-CZ"), "cs")
+        expectEqual(LanguageService.outputPromptValue(for: "cs"), "Czech")
+    }
+
+    private static func testLanguageServicePersistsCanonicalValues() {
+        let suiteName = "LanguageServiceTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("Unable to create isolated UserDefaults suite")
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("Portuguese", forKey: LanguageService.outputLanguageStorageKey)
+        defaults.set("CS-cz", forKey: LanguageService.inputLanguageStorageKey)
+
+        expectEqual(LanguageService.loadOutputLanguage(defaults: defaults), "pt")
+        expectEqual(LanguageService.loadInputLanguage(defaults: defaults), "cs")
+        expectEqual(defaults.string(forKey: LanguageService.outputLanguageStorageKey), "pt")
+        expectEqual(defaults.string(forKey: LanguageService.inputLanguageStorageKey), "cs")
+
+        LanguageService.saveOutputLanguage("Slovak", defaults: defaults)
+        LanguageService.saveInputLanguage("YUE-Hant-HK", defaults: defaults)
+        expectEqual(defaults.string(forKey: LanguageService.outputLanguageStorageKey), "sk")
+        expectEqual(defaults.string(forKey: LanguageService.inputLanguageStorageKey), "yue")
     }
 
     private static func expectEqual(_ actual: String?, _ expected: String, file: StaticString = #file, line: UInt = #line) {
