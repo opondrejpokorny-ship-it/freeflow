@@ -44,7 +44,9 @@ actor LocalWhisperModelManager {
     init(
         fileManager: FileManager = .default,
         modelsDirectory: URL? = nil,
-        downloader: @escaping Downloader = LocalWhisperModelManager.defaultDownload
+        downloader: @escaping Downloader = { url, progress in
+            try await LocalWhisperModelManager.defaultDownload(url, progress: progress)
+        }
     ) throws {
         let resolvedDirectory: URL
         if let modelsDirectory {
