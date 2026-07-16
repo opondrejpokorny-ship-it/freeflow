@@ -44,10 +44,10 @@ PY
 
 case "${expected_arch}" in
     arm64|x86_64)
-        lipo -verify_arch "${expected_arch}" "${executable}"
+        lipo "${executable}" -verify_arch "${expected_arch}"
         ;;
     universal)
-        lipo -verify_arch arm64 x86_64 "${executable}"
+        lipo "${executable}" -verify_arch arm64 x86_64
         ;;
     *)
         echo "Unsupported expected architecture: ${expected_arch}" >&2
