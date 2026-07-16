@@ -8,6 +8,9 @@ struct AppContextServiceTests {
         testNonStrippingModelPreservesExistingBehavior()
         testDeprecatedGroqModelsAreNotPredefined()
         testQwenCleanupDisablesReasoning()
+        testLanguageCatalogContainsCanonicalWhisperLanguages()
+        testLanguageCodeNormalization()
+        testLanguageOptionDefaults()
         print("AppContextServiceTests passed")
     }
 
@@ -72,6 +75,38 @@ struct AppContextServiceTests {
 
         expect(config.reasoningEffort == "none", "Qwen cleanup should disable reasoning")
         expect(config.includeReasoning == false, "Qwen cleanup should exclude reasoning output")
+    }
+
+    private static func testLanguageCatalogContainsCanonicalWhisperLanguages() {
+        let languages = DictationLanguageCatalog.supported
+        let uniqueCodes = Set(languages.map(\.code))
+
+        expect(languages.count == 100, "Expected 100 canonical Whisper languages, got \(languages.count)")
+        expect(uniqueCodes.count == languages.count, "Language catalog contains duplicate codes")
+        expect(uniqueCodes.contains("cs"), "Czech is missing from the language catalog")
+        expect(uniqueCodes.contains("sk"), "Slovak is missing from the language catalog")
+        expect(uniqueCodes.contains("yue"), "Cantonese is missing from the language catalog")
+    }
+
+    private static func testLanguageCodeNormalization() {
+        expectEqual(DictationLanguageCatalog.normalizedCode("cs-CZ"), "cs")
+        expectEqual(DictationLanguageCatalog.normalizedCode(" pt_BR "), "pt")
+        expectEqual(DictationLanguageCatalog.normalizedCode("YUE-Hant-HK"), "yue")
+        expectEqual(DictationLanguageCatalog.normalizedCode(""), "")
+        expect(DictationLanguageCatalog.normalizedCode("xx-YY") == nil, "Unsupported language should return nil")
+    }
+
+    private static func testLanguageOptionDefaults() {
+        let locale = Locale(identifier: "en_US")
+        let inputOptions = DictationLanguageCatalog.inputOptions(locale: locale)
+        let outputOptions = DictationLanguageCatalog.outputOptions(locale: locale)
+
+        expect(inputOptions.first?.code == "", "Input options should start with auto-detect")
+        expect(inputOptions.first?.name == "Auto-detect", "Unexpected input default label")
+        expect(outputOptions.first?.code == "", "Output options should start with spoken-language preservation")
+        expect(outputOptions.first?.name == "Same as spoken language", "Unexpected output default label")
+        expect(inputOptions.count == 101, "Input options should include auto-detect and 100 languages")
+        expect(outputOptions.count == 101, "Output options should include default and 100 languages")
     }
 
     private static func expectEqual(_ actual: String?, _ expected: String, file: StaticString = #file, line: UInt = #line) {
