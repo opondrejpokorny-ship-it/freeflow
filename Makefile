@@ -25,16 +25,18 @@ TEST_SOURCES = \
 	Sources/LocalWhisperSpeechProvider.swift \
 	Sources/ModelConfiguration.swift \
 	Sources/SpeechProvider.swift \
+	Sources/SpeechProviderFactory.swift \
 	Sources/TranscriptionService.swift \
 	Tests/AppContextServiceTests.swift
 LOCAL_WHISPER_TEST_SOURCES = \
-	Sources/CloudSpeechProvider.swift \
 	Sources/LanguageCatalog.swift \
 	Sources/LanguageService.swift \
+	Sources/LocalWhisperModelCatalog.swift \
+	Sources/LocalWhisperModelManager.swift \
 	Sources/LocalWhisperRuntime.swift \
 	Sources/LocalWhisperSpeechProvider.swift \
 	Sources/SpeechProvider.swift \
-	Sources/TranscriptionService.swift \
+	Sources/SpeechProviderFactory.swift \
 	Tests/LocalWhisperSpeechProviderTests.swift
 RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
