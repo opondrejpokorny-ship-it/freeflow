@@ -265,13 +265,10 @@ struct ProviderSettingsFields: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Transcription Language")
                     .font(.caption.weight(.semibold))
-                Picker("", selection: $appState.transcriptionLanguage) {
-                    ForEach(AppState.transcriptionLanguageOptions, id: \.code) { option in
-                        Text(option.name).tag(option.code)
-                    }
-                }
-                .accessibilityLabel("Transcription Language")
-                .labelsHidden()
+                LanguagePickerView(
+                    mode: .transcription,
+                    selection: $appState.transcriptionLanguage
+                )
                 Text("Hint to the transcription model. Auto-detect works for most users. Pick a specific language if you see wrong-script characters (for example Chinese) appear in your output.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1053,28 +1050,12 @@ struct GeneralSettingsView: View {
 
     // MARK: Output Language
 
-    private static let outputLanguageOptions = [
-        "",
-        "English",
-        "Chinese (Simplified)",
-        "Chinese (Traditional)",
-        "Spanish",
-        "French",
-        "Japanese",
-        "Korean",
-        "German",
-        "Portuguese",
-    ]
-
     private var outputLanguageSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Language", selection: $appState.outputLanguage) {
-                Text("Same as spoken").tag("")
-                ForEach(Self.outputLanguageOptions.dropFirst(), id: \.self) { lang in
-                    Text(lang).tag(lang)
-                }
-            }
-            .pickerStyle(.menu)
+            LanguagePickerView(
+                mode: .output,
+                selection: $appState.outputLanguage
+            )
 
             Text("When set, FreeFlow translates your speech into the selected language.")
                 .font(.caption)
