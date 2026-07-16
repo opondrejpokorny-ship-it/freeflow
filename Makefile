@@ -15,6 +15,7 @@ TEST_RUNNER = $(BUILD_DIR)/FreeFlowTests
 TEST_SOURCES = \
 	Sources/AppContextService.swift \
 	Sources/LanguageCatalog.swift \
+	Sources/LanguageService.swift \
 	Sources/LLMAPITransport.swift \
 	Sources/ModelConfiguration.swift \
 	Tests/AppContextServiceTests.swift
