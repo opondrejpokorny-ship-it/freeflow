@@ -98,12 +98,24 @@ enum SpeechProviderFactory {
         }
     }
 
+    /// Backward-compatible factory used by call sites that only have a cloud provider.
+    static func makeProvider(
+        mode: SpeechExecutionMode,
+        cloudProvider: @autoclosure () throws -> any SpeechProvider
+    ) throws -> any SpeechProvider {
+        switch mode {
+        case .cloud:
+            return try cloudProvider()
+        case .local, .hybrid:
+            throw FactoryError.unsupportedMode(mode)
+        }
+    }
+
+    /// Provider-complete factory. Local must be explicitly supplied; Hybrid remains unavailable.
     static func makeProvider(
         mode: SpeechExecutionMode,
         cloudProvider: @autoclosure () throws -> any SpeechProvider,
-        localProvider: @autoclosure () throws -> any SpeechProvider = {
-            throw FactoryError.localRuntimeUnavailable
-        }()
+        localProvider: @autoclosure () throws -> any SpeechProvider
     ) throws -> any SpeechProvider {
         switch mode {
         case .cloud:
