@@ -33,20 +33,24 @@ final class CloudSpeechProvider: SpeechProvider {
 }
 
 /// Constructs provider-neutral speech implementations from application settings.
-/// Local and hybrid providers are deliberately rejected until their runtimes are
-/// installed, preventing the UI from silently falling back to the cloud.
 enum SpeechProviderFactory {
     enum FactoryError: LocalizedError, Equatable {
         case unsupportedMode(SpeechExecutionMode)
+        case localRuntimeUnavailable
+        case localModelUnavailable
 
         var errorDescription: String? {
             switch self {
-            case .unsupportedMode(.local):
-                return "Local transcription is not installed yet."
             case .unsupportedMode(.hybrid):
                 return "Hybrid transcription is not available yet."
+            case .unsupportedMode(.local):
+                return "Local transcription is unavailable."
             case .unsupportedMode(.cloud):
                 return "Cloud transcription is unavailable."
+            case .localRuntimeUnavailable:
+                return "The local Whisper runtime is not installed or executable."
+            case .localModelUnavailable:
+                return "The selected local Whisper model is not installed."
             }
         }
     }
@@ -65,6 +69,36 @@ enum SpeechProviderFactory {
         )
     }
 
+    static func makeLocalProvider(
+        runtimeStatus: LocalWhisperRuntimeStatus,
+        modelURL: URL?,
+        language: String?,
+        timeout: TimeInterval = 120,
+        processRunner: any LocalWhisperProcessRunning = FoundationLocalWhisperProcessRunner()
+    ) throws -> any SpeechProvider {
+        guard runtimeStatus.isReady, let executableURL = runtimeStatus.executableURL else {
+            throw FactoryError.localRuntimeUnavailable
+        }
+        guard let modelURL else {
+            throw FactoryError.localModelUnavailable
+        }
+
+        do {
+            return try LocalWhisperSpeechProvider(
+                executableURL: executableURL,
+                modelURL: modelURL,
+                language: language,
+                timeout: timeout,
+                processRunner: processRunner
+            )
+        } catch LocalWhisperSpeechProviderError.runtimeUnavailable {
+            throw FactoryError.localRuntimeUnavailable
+        } catch LocalWhisperSpeechProviderError.modelUnavailable {
+            throw FactoryError.localModelUnavailable
+        }
+    }
+
+    /// Backward-compatible factory used by call sites that only have a cloud provider.
     static func makeProvider(
         mode: SpeechExecutionMode,
         cloudProvider: @autoclosure () throws -> any SpeechProvider
@@ -74,6 +108,22 @@ enum SpeechProviderFactory {
             return try cloudProvider()
         case .local, .hybrid:
             throw FactoryError.unsupportedMode(mode)
+        }
+    }
+
+    /// Provider-complete factory. Local must be explicitly supplied; Hybrid remains unavailable.
+    static func makeProvider(
+        mode: SpeechExecutionMode,
+        cloudProvider: @autoclosure () throws -> any SpeechProvider,
+        localProvider: @autoclosure () throws -> any SpeechProvider
+    ) throws -> any SpeechProvider {
+        switch mode {
+        case .cloud:
+            return try cloudProvider()
+        case .local:
+            return try localProvider()
+        case .hybrid:
+            throw FactoryError.unsupportedMode(.hybrid)
         }
     }
 }

@@ -12,6 +12,7 @@ APP_EXECUTABLE_TARGET := $(subst $(space),\ ,$(APP_EXECUTABLE))
 
 SOURCES = $(shell find Sources -name '*.swift' -type f | LC_ALL=C sort)
 TEST_RUNNER = $(BUILD_DIR)/FreeFlowTests
+LOCAL_WHISPER_TEST_RUNNER = $(BUILD_DIR)/LocalWhisperSpeechProviderTests
 TEST_SOURCES = \
 	Sources/AppContextService.swift \
 	Sources/CloudSpeechProvider.swift \
@@ -21,10 +22,20 @@ TEST_SOURCES = \
 	Sources/LocalWhisperModelCatalog.swift \
 	Sources/LocalWhisperModelManager.swift \
 	Sources/LocalWhisperRuntime.swift \
+	Sources/LocalWhisperSpeechProvider.swift \
 	Sources/ModelConfiguration.swift \
 	Sources/SpeechProvider.swift \
 	Sources/TranscriptionService.swift \
 	Tests/AppContextServiceTests.swift
+LOCAL_WHISPER_TEST_SOURCES = \
+	Sources/CloudSpeechProvider.swift \
+	Sources/LanguageCatalog.swift \
+	Sources/LanguageService.swift \
+	Sources/LocalWhisperRuntime.swift \
+	Sources/LocalWhisperSpeechProvider.swift \
+	Sources/SpeechProvider.swift \
+	Sources/TranscriptionService.swift \
+	Tests/LocalWhisperSpeechProviderTests.swift
 RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
 
@@ -82,8 +93,9 @@ endif
 	@codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" --entitlements FreeFlow.entitlements "$(APP_BUNDLE)"
 	@echo "Built $(APP_BUNDLE)"
 
-test: $(TEST_RUNNER)
+test: $(TEST_RUNNER) $(LOCAL_WHISPER_TEST_RUNNER)
 	@$(TEST_RUNNER)
+	@$(LOCAL_WHISPER_TEST_RUNNER)
 
 $(TEST_RUNNER): $(TEST_SOURCES)
 	@mkdir -p "$(BUILD_DIR)"
@@ -93,6 +105,15 @@ $(TEST_RUNNER): $(TEST_SOURCES)
 		-sdk $(shell xcrun --show-sdk-path) \
 		-target $(ARCH)-apple-macosx13.0 \
 		$(TEST_SOURCES)
+
+$(LOCAL_WHISPER_TEST_RUNNER): $(LOCAL_WHISPER_TEST_SOURCES)
+	@mkdir -p "$(BUILD_DIR)"
+	swiftc \
+		-parse-as-library \
+		-o "$(LOCAL_WHISPER_TEST_RUNNER)" \
+		-sdk $(shell xcrun --show-sdk-path) \
+		-target $(ARCH)-apple-macosx13.0 \
+		$(LOCAL_WHISPER_TEST_SOURCES)
 
 icon: $(ICON_ICNS)
 
