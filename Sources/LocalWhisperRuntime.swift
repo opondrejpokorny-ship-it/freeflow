@@ -14,7 +14,7 @@ struct LocalWhisperRuntimeStatus: Equatable, Sendable {
     let metalIsExpected: Bool
 
     var isReady: Bool {
-        executableURL != nil && executableIsRunnable
+        architecture != .unsupported && executableURL != nil && executableIsRunnable
     }
 }
 
@@ -23,30 +23,34 @@ struct LocalWhisperRuntimeDetector {
     private let fileManager: FileManager
     private let bundledExecutableURL: URL?
     private let customExecutableURL: URL?
+    private let commonExecutableURLs: [URL]
 
     init(
         fileManager: FileManager = .default,
         bundledExecutableURL: URL? = Bundle.main.url(forResource: "whisper-cli", withExtension: nil),
-        customExecutableURL: URL? = nil
+        customExecutableURL: URL? = nil,
+        commonExecutableURLs: [URL] = [
+            URL(fileURLWithPath: "/opt/homebrew/bin/whisper-cli"),
+            URL(fileURLWithPath: "/usr/local/bin/whisper-cli")
+        ]
     ) {
         self.fileManager = fileManager
         self.bundledExecutableURL = bundledExecutableURL
         self.customExecutableURL = customExecutableURL
+        self.commonExecutableURLs = commonExecutableURLs
     }
 
     func detect() -> LocalWhisperRuntimeStatus {
-        let executableURL = [customExecutableURL, bundledExecutableURL]
-            .compactMap { $0 }
-            .first(where: { fileManager.fileExists(atPath: $0.path) })
-
-        let runnable = executableURL.map {
-            fileManager.isExecutableFile(atPath: $0.path)
-        } ?? false
+        let executableURL = ([customExecutableURL, bundledExecutableURL].compactMap { $0 } + commonExecutableURLs)
+            .first(where: {
+                fileManager.fileExists(atPath: $0.path)
+                    && fileManager.isExecutableFile(atPath: $0.path)
+            })
 
         return LocalWhisperRuntimeStatus(
             architecture: Self.currentArchitecture,
             executableURL: executableURL,
-            executableIsRunnable: runnable,
+            executableIsRunnable: executableURL != nil,
             metalIsExpected: Self.currentArchitecture == .appleSilicon
         )
     }
