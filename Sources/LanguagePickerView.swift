@@ -7,9 +7,18 @@ enum LanguagePickerMode: Sendable {
     func options(locale: Locale = .current) -> [(code: String, name: String)] {
         switch self {
         case .transcription:
-            return DictationLanguageCatalog.inputOptions(locale: locale)
+            return LanguageService.inputOptions(locale: locale)
         case .output:
-            return DictationLanguageCatalog.outputOptions(locale: locale)
+            return LanguageService.outputOptions(locale: locale)
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .transcription:
+            return "Transcription Language"
+        case .output:
+            return "Output Language"
         }
     }
 }
@@ -63,7 +72,7 @@ struct LanguagePickerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.bordered)
-        .accessibilityLabel("Language")
+        .accessibilityLabel(mode.accessibilityLabel)
         .accessibilityValue(selectedName)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             languagePopover
@@ -84,8 +93,15 @@ struct LanguagePickerView: View {
                                 isPresented = false
                             } label: {
                                 HStack(spacing: 10) {
-                                    Image(systemName: selection == option.code ? "checkmark" : "")
-                                        .frame(width: 12)
+                                    Group {
+                                        if selection == option.code {
+                                            Image(systemName: "checkmark")
+                                        } else {
+                                            Color.clear
+                                        }
+                                    }
+                                    .frame(width: 12, height: 12)
+
                                     Text(option.name)
                                     Spacer(minLength: 8)
                                     if !option.code.isEmpty {
