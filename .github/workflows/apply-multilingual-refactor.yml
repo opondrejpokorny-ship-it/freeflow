@@ -1,0 +1,47 @@
+name: Apply multilingual refactor
+
+on:
+  push:
+    branches:
+      - feature/multilingual-foundation
+    paths:
+      - .github/workflows/apply-multilingual-refactor.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-multilingual-refactor
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: macos-14
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/multilingual-foundation
+          fetch-depth: 0
+
+      - name: Apply guarded source edits
+        run: python3 scripts/apply_multilingual_refactor.py
+
+      - name: Validate patch formatting
+        run: git diff --check
+
+      - name: Commit applied refactor
+        run: |
+          if git diff --quiet; then
+            echo "Refactor already applied."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/AppState.swift Sources/SettingsView.swift Sources/PostProcessingService.swift
+          git commit -m "Wire multilingual settings into app"
+          git push origin HEAD:feature/multilingual-foundation
