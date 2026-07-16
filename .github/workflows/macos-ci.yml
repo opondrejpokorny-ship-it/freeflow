@@ -1,0 +1,42 @@
+name: macOS CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - feature/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: macos-14
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show Swift environment
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Run tests
+        run: make test
+
+      - name: Build development app
+        run: make CODESIGN_IDENTITY=-
+
+      - name: Verify app bundle
+        run: |
+          test -x "build/FreeFlow Dev.app/Contents/MacOS/FreeFlow Dev"
+          codesign --verify --deep --strict "build/FreeFlow Dev.app"
