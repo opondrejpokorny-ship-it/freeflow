@@ -77,12 +77,12 @@ build_architecture() {
         -DGGML_NATIVE=OFF \
         -DGGML_OPENMP=OFF \
         -DGGML_METAL=ON \
-        -DGGML_METAL_EMBED_LIBRARY=ON
+        -DGGML_METAL_EMBED_LIBRARY=ON >&2
 
     cmake --build "${build_dir}" \
         --config Release \
         --target whisper-cli \
-        --parallel "$(logical_cpu_count)"
+        --parallel "$(logical_cpu_count)" >&2
 
     if [[ ! -x "${executable}" ]]; then
         echo "whisper-cli was not produced at ${executable}" >&2
