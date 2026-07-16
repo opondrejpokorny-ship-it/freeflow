@@ -2,7 +2,7 @@ import Foundation
 
 @main
 struct AppContextServiceTests {
-    static func main() {
+    static func main() async {
         testQwenRawOutputIsSummarized()
         testQwenReasoningOutputIsStripped()
         testNonStrippingModelPreservesExistingBehavior()
@@ -16,6 +16,9 @@ struct AppContextServiceTests {
         testLanguageServicePersistsCanonicalValues()
         testSpeechProviderCapabilities()
         testCloudTranscriptionConformsToSpeechProvider()
+        testSpeechProviderFactoryRejectsUnavailableModes()
+        await testSpeechTranscriptionRunnerUsesInjectedProvider()
+        await testSpeechTranscriptionRunnerPropagatesErrors()
         print("AppContextServiceTests passed")
     }
 
@@ -164,6 +167,45 @@ struct AppContextServiceTests {
             fatalError("Unable to construct cloud transcription provider")
         }
         expectSpeechProvider(service)
+        expect(service.capabilities == .openAICompatibleCloud, "Cloud service capabilities are incorrect")
+    }
+
+    private static func testSpeechProviderFactoryRejectsUnavailableModes() {
+        for mode in [SpeechExecutionMode.local, .hybrid] {
+            do {
+                _ = try SpeechProviderFactory.makeProvider(
+                    mode: mode,
+                    cloudProvider: FakeSpeechProvider(result: .success("unused"))
+                )
+                fatalError("Expected unsupported mode error for \(mode.rawValue)")
+            } catch let error as SpeechProviderFactory.FactoryError {
+                expect(error == .unsupportedMode(mode), "Unexpected factory error: \(error)")
+            } catch {
+                fatalError("Unexpected error type: \(error)")
+            }
+        }
+    }
+
+    private static func testSpeechTranscriptionRunnerUsesInjectedProvider() async {
+        let provider = FakeSpeechProvider(result: .success("Ahoj světe"))
+        let runner = SpeechTranscriptionRunner(provider: provider)
+        let result = try? await runner.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.wav"))
+
+        expectEqual(result, "Ahoj světe")
+        expect(provider.callCount == 1, "Injected provider should be called exactly once")
+    }
+
+    private static func testSpeechTranscriptionRunnerPropagatesErrors() async {
+        let provider = FakeSpeechProvider(result: .failure(FakeSpeechError.expected))
+        let runner = SpeechTranscriptionRunner(provider: provider)
+
+        do {
+            _ = try await runner.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.wav"))
+            fatalError("Runner should propagate provider errors")
+        } catch FakeSpeechError.expected {
+        } catch {
+            fatalError("Unexpected propagated error: \(error)")
+        }
     }
 
     private static func expectSpeechProvider(_ provider: any SpeechProvider) {
@@ -178,5 +220,30 @@ struct AppContextServiceTests {
         if !condition {
             fatalError("\(file):\(line): \(message)")
         }
+    }
+}
+
+private enum FakeSpeechError: Error {
+    case expected
+}
+
+private final class FakeSpeechProvider: SpeechProvider {
+    let capabilities = SpeechProviderCapabilities(
+        executionMode: .local,
+        supportsAutomaticLanguageDetection: true,
+        supportsLanguageHint: true,
+        requiresNetwork: false
+    )
+
+    private let result: Result<String, Error>
+    private(set) var callCount = 0
+
+    init(result: Result<String, Error>) {
+        self.result = result
+    }
+
+    func transcribe(fileURL: URL) async throws -> String {
+        callCount += 1
+        return try result.get()
     }
 }
