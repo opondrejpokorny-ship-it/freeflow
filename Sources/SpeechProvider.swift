@@ -5,6 +5,7 @@ import Foundation
 /// Implementations may execute remotely, locally, or combine both approaches.
 /// Callers should depend on this protocol rather than a concrete API client.
 protocol SpeechProvider {
+    var capabilities: SpeechProviderCapabilities { get }
     func transcribe(fileURL: URL) async throws -> String
 }
 
@@ -30,6 +31,8 @@ struct SpeechProviderCapabilities: Equatable, Sendable {
     )
 }
 
-/// The existing OpenAI-compatible transcription client is the first cloud
-/// implementation of the provider-neutral boundary.
-extension TranscriptionService: SpeechProvider {}
+/// The existing OpenAI-compatible transcription client remains compatible with
+/// the provider boundary while application call sites migrate to the cloud adapter.
+extension TranscriptionService: SpeechProvider {
+    var capabilities: SpeechProviderCapabilities { .openAICompatibleCloud }
+}
