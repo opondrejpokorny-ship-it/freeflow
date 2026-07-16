@@ -43,10 +43,17 @@ actor LocalWhisperModelManager {
         modelsDirectory: URL? = nil,
         downloader: @escaping @Sendable (URL) async throws -> URL = LocalWhisperModelManager.defaultDownload
     ) throws {
+        let resolvedDirectory: URL
+        if let modelsDirectory {
+            resolvedDirectory = modelsDirectory
+        } else {
+            resolvedDirectory = try Self.defaultModelsDirectory(fileManager: fileManager)
+        }
+
         self.fileManager = fileManager
-        self.modelsDirectory = try modelsDirectory ?? Self.defaultModelsDirectory(fileManager: fileManager)
+        self.modelsDirectory = resolvedDirectory
         self.downloader = downloader
-        try fileManager.createDirectory(at: self.modelsDirectory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: resolvedDirectory, withIntermediateDirectories: true)
     }
 
     static func defaultModelsDirectory(fileManager: FileManager = .default) throws -> URL {
@@ -126,7 +133,7 @@ actor LocalWhisperModelManager {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func defaultDownload(_ url: URL) async throws -> URL {
+    static func defaultDownload(_ url: URL) async throws -> URL {
         let (temporaryURL, response) = try await URLSession.shared.download(from: url)
         if let httpResponse = response as? HTTPURLResponse,
            !(200..<300).contains(httpResponse.statusCode) {
