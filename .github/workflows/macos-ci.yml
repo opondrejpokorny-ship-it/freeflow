@@ -93,9 +93,28 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build universal runtime
-        run: make whisper-runtime ARCH=universal
+        id: universal_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          make whisper-runtime ARCH=universal 2>&1 | tee universal-runtime-build.log
+
+      - name: Upload universal runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-whisper-runtime-diagnostics
+          path: universal-runtime-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail when universal runtime build failed
+        if: steps.universal_build.outcome == 'failure'
+        run: exit 1
 
       - name: Verify universal runtime
+        if: steps.universal_build.outcome == 'success'
         run: |
           bash scripts/verify-whisper-runtime.sh \
             build/whisper-runtime/universal/whisper-cli \
